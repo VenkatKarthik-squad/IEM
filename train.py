@@ -12,6 +12,7 @@ import torch.utils
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
 from torch.autograd import Variable
+import cv2
 
 from model import *
 from multi_read_data import MemoryFriendlyLoader
@@ -65,6 +66,18 @@ def save_images(tensor, path):
     im.save(path, 'png')
 
 
+def save_video_frames(tensor, path):
+    frames = tensor.cpu().float().numpy()
+    frames = np.transpose(frames, (0, 2, 3, 1))  # Change to (num_frames, height, width, channels)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(path, fourcc, 20.0, (frames.shape[2], frames.shape[1]))
+    for frame in frames:
+        frame = (frame * 255.0).astype('uint8')
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        out.write(frame)
+    out.release()
+
+
 def main():
     if not torch.cuda.is_available():
         logging.info('no gpu device available')
@@ -95,12 +108,12 @@ def main():
     print(MB)
 
 
-    train_low_data_names = 'Your train dataset'
-    TrainDataset = MemoryFriendlyLoader(img_dir=train_low_data_names, task='train')
+    train_video_dir = 'Your train video dataset directory'
+    TrainDataset = MemoryFriendlyLoader(video_dir=train_video_dir, task='train')
 
 
-    test_low_data_names = './data/medium'
-    TestDataset = MemoryFriendlyLoader(img_dir=test_low_data_names, task='test')
+    test_video_dir = 'Your test video dataset directory'
+    TestDataset = MemoryFriendlyLoader(video_dir=test_video_dir, task='test')
 
     train_queue = torch.utils.data.DataLoader(
         TrainDataset, batch_size=args.batch_size,
@@ -137,13 +150,13 @@ def main():
             logging.info('train %03d %f', epoch, loss)
             model.eval()
             with torch.no_grad():
-                for _, (input, image_name) in enumerate(test_queue):
+                for _, (input, video_name) in enumerate(test_queue):
                     input = Variable(input, volatile=True).cuda()
-                    image_name = image_name[0].split('\\')[-1].split('.')[0]
-                    illu_list, ref_list, input_list, atten= model(input)
-                    u_name = '%s.png' % (image_name + '_' + str(epoch))
+                    video_name = video_name[0].split('\\')[-1].split('.')[0]
+                    illu_list, ref_list, input_list, atten = model(input)
+                    u_name = '%s.mp4' % (video_name + '_' + str(epoch))
                     u_path = image_path + '/' + u_name
-                    save_images(ref_list[0], u_path)
+                    save_video_frames(ref_list[0], u_path)
 
 if __name__ == '__main__':
     main()

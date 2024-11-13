@@ -6,56 +6,51 @@ from PIL import Image
 from glob import glob
 import torchvision.transforms as transforms
 import os
+import cv2  # Add this import for video processing
 
 batch_w = 600
 batch_h = 400
 
 
 class MemoryFriendlyLoader(torch.utils.data.Dataset):
-    def __init__(self, img_dir, task):
-        self.low_img_dir = img_dir
+    def __init__(self, video_dir, task):
+        self.video_dir = video_dir
         self.task = task
-        self.train_low_data_names = []
+        self.video_files = []
 
-        for root, dirs, names in os.walk(self.low_img_dir):
+        for root, dirs, names in os.walk(self.video_dir):
             for name in names:
-                self.train_low_data_names.append(os.path.join(root, name))
+                if name.endswith(('.mp4', '.avi', '.mov')):  # Add video file extensions
+                    self.video_files.append(os.path.join(root, name))
 
-        self.train_low_data_names.sort()
-        self.count = len(self.train_low_data_names)
+        self.video_files.sort()
+        self.count = len(self.video_files)
 
         transform_list = []
         transform_list += [transforms.ToTensor()]
         self.transform = transforms.Compose(transform_list)
 
-    def load_images_transform(self, file):
-        im = Image.open(file).convert('RGB')
-        img_norm = self.transform(im).numpy()
-        img_norm = np.transpose(img_norm, (1, 2, 0))
-        return img_norm
+    def load_video_frames(self, file):
+        cap = cv2.VideoCapture(file)
+        frames = []
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB
+            frame = Image.fromarray(frame)
+            frame = self.transform(frame).numpy()
+            frames.append(frame)
+        cap.release()
+        return frames
 
     def __getitem__(self, index):
+        frames = self.load_video_frames(self.video_files[index])
+        frames = np.asarray(frames, dtype=np.float32)
+        frames = np.transpose(frames, (0, 3, 1, 2))  # Change to (num_frames, channels, height, width)
 
-        low = self.load_images_transform(self.train_low_data_names[index])
-
-        h = low.shape[0]
-        w = low.shape[1]
-        #
-        h_offset = random.randint(0, max(0, h - batch_h - 1))
-        w_offset = random.randint(0, max(0, w - batch_w - 1))
-        #
-        # if self.task != 'test':
-        #     low = low[h_offset:h_offset + batch_h, w_offset:w_offset + batch_w]
-
-        low = np.asarray(low, dtype=np.float32)
-        low = np.transpose(low[:, :, :], (2, 0, 1))
-
-        img_name = self.train_low_data_names[index].split('\\')[-1]
-        # if self.task == 'test':
-        #     # img_name = self.train_low_data_names[index].split('\\')[-1]
-        #     return torch.from_numpy(low), img_name
-
-        return torch.from_numpy(low), img_name
+        video_name = self.video_files[index].split('\\')[-1]
+        return torch.from_numpy(frames), video_name
 
     def __len__(self):
         return self.count

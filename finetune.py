@@ -7,6 +7,7 @@ import argparse
 import torch.utils
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
+import cv2
 
 from model import *
 from multi_read_data import MemoryFriendlyLoader
@@ -42,6 +43,18 @@ def save_images(tensor, path):
     image_numpy = (np.transpose(image_numpy, (1, 2, 0)))
     im = Image.fromarray(np.clip(image_numpy * 255.0, 0, 255.0).astype('uint8'))
     im.save(path, 'png')
+
+
+def save_video_frames(tensor, path):
+    frames = tensor.cpu().float().numpy()
+    frames = np.transpose(frames, (0, 2, 3, 1))  # Change to (num_frames, height, width, channels)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(path, fourcc, 20.0, (frames.shape[2], frames.shape[1]))
+    for frame in frames:
+        frame = (frame * 255.0).astype('uint8')
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        out.write(frame)
+    out.release()
 
 
 def main():
